@@ -49,20 +49,35 @@ An interactive web application that simulates an ant moving on a cube, designed 
 
 4. Open [http://localhost:3000](http://localhost:3000) in your browser
 
-## Deployment
+### Deployment
 
-### Vercel
+#### Vercel (Recommended)
 
 1. Push your code to GitHub
 2. Connect your repository to Vercel
 3. Deploy automatically with zero configuration
 
-### Manual Deployment
+#### Manual Deployment
 
 ```bash
 npm run build
 npm start
 ```
+
+## Project Status
+
+✅ **Completed Features:**
+- Basic cube visualization with ant position tracking
+- Movement controls (L, R, B buttons and keyboard)
+- Path recording display
+- Reset functionality
+- 5-slot LIFO system with pinning
+- Responsive design with Tailwind CSS
+
+⚠️ **Current Limitations:**
+- Build process may have compatibility issues with some environments
+- Cube visualization is a 2D projection (3D could be enhanced with Three.js)
+- Movement logic could be more sophisticated regarding orientation tracking
 
 ## Mathematical Context
 
