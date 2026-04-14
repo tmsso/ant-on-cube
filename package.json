@@ -13,9 +13,12 @@
   "author": "tmsso",
   "license": "MIT",
   "dependencies": {
+    "autoprefixer": "^10.4.16",
     "next": "14.0.4",
+    "postcss": "^8.4.32",
     "react": "^18",
-    "react-dom": "^18"
+    "react-dom": "^18",
+    "tailwindcss": "^3.4.0"
   },
   "devDependencies": {
     "eslint": "^8",
