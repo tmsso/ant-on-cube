@@ -11,27 +11,18 @@ const ADJACENCY = {
 };
 
 /**
- * FIXED RELATIVE TURNS
- * Directions are calculated by imagining looking from 'prev' towards 'curr'.
- * We determine Left/Right consistently using the cube geometry.
+ * FIXED RELATIVE TURNS (PERSPECTIVE AWARE)
+ * [LeftNeighbor, RightNeighbor]
  */
 const RELATIVE_TURNS = {
-  // At Node 6
-  "2-6": [7, 5], "5-6": [2, 7], "7-6": [5, 2],
-  // At Node 2
-  "6-2": [3, 1], "1-2": [6, 3], "3-2": [1, 6],
-  // At Node 5
-  "6-5": [1, 4], "1-5": [4, 6], "4-5": [6, 1],
-  // At Node 7
-  "6-7": [4, 3], "4-7": [3, 6], "3-7": [6, 4],
-  // At Node 1
-  "2-1": [5, 0], "5-1": [0, 2], "0-1": [2, 5],
-  // At Node 3
-  "2-3": [0, 7], "0-3": [7, 2], "7-3": [2, 0],
-  // At Node 4
-  "5-4": [7, 0], "7-4": [0, 5], "0-4": [5, 7],
-  // At Node 0
-  "1-0": [4, 3], "4-0": [3, 1], "3-0": [1, 4],
+  "2-6": [7, 5], "5-6": [2, 7], "7-6": [5, 2], // At 6
+  "6-2": [3, 1], "1-2": [6, 3], "3-2": [1, 6], // At 2
+  "6-5": [1, 4], "1-5": [4, 6], "4-5": [6, 1], // At 5
+  "6-7": [4, 3], "4-7": [3, 6], "3-7": [6, 4], // At 7
+  "2-1": [0, 5], "5-1": [2, 0], "0-1": [5, 2], // At 1
+  "2-3": [7, 0], "7-3": [0, 2], "0-3": [2, 7], // At 3
+  "1-0": [3, 4], "3-0": [4, 1], "4-0": [1, 3], // At 0
+  "5-4": [0, 7], "0-4": [7, 5], "7-4": [5, 0], // At 4
 };
 
 const TRANSLATIONS = {
@@ -41,7 +32,7 @@ const TRANSLATIONS = {
     clear: "Clear Path", save: "Save", saved: "Saved Paths",
     noPath: "START", undo: "Undo", replay: "Replay",
     startNode: "Start Point", startFrom: "Heading From",
-    rotAxis: "Rotate", autoSave: "AUTO-SAVE ON RESET",
+    rotAxis: "Rotate", autoSave: "AUTO-SAVE",
     node: "Point", chars: { L: 'L', R: 'R', B: 'B' }
   },
   hu: {
@@ -84,13 +75,16 @@ function CubeSimulation({ lang, t }) {
   const [startPoint, setStartPoint] = useState({ node: 6, from: 2 });
   const [current, setCurrent] = useState(6);
   const [previous, setPrevious] = useState(2);
-  const [logicPath, setPath] = useState([]); // Internal representation: 'L', 'R', 'B'
+  const [logicPath, setPath] = useState([]);
   const [isModified, setIsModified] = useState(false);
-  const [slots, setSlots] = useState(Array(5).fill(null)); // Stores logicPath array
+  const [slots, setSlots] = useState(Array(5).fill(null));
   const [pinned, setPinned] = useState(Array(5).fill(false));
   const [rot, setRot] = useState({ x: 25, y: -45, z: 0 });
   const [isReplaying, setIsReplaying] = useState(false);
   const replayRef = useRef(null);
+
+  const displayChars = useMemo(() => lang === 'en' ? TRANSLATIONS.en.chars : TRANSLATIONS.hu.chars, [lang]);
+  const activePathString = useMemo(() => logicPath.map(c => displayChars[c]).join(''), [logicPath, displayChars]);
 
   const opt = useMemo(() => {
     const key = `${previous}-${current}`;
@@ -111,9 +105,9 @@ function CubeSimulation({ lang, t }) {
     }
   };
 
-  // Keyboard Controls
   useEffect(() => {
     const handleKeyDown = (e) => {
+      if (e.target.tagName === 'SELECT') return;
       const key = e.key.toUpperCase();
       if (lang === 'en') {
         if (key === 'L') moveAnt('L');
@@ -200,7 +194,7 @@ function CubeSimulation({ lang, t }) {
          setSlots(newSlots);
        }
     }
-    setPath(logicArr);
+    setPath([...logicArr]);
     setIsModified(false);
     let c = startPoint.node, p = startPoint.from;
     logicArr.forEach(turn => {
@@ -243,8 +237,7 @@ function CubeSimulation({ lang, t }) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
       <div className="lg:col-span-7 bg-white p-6 rounded-[2.5rem] shadow-xl border border-slate-100 flex flex-col items-center relative overflow-hidden min-h-[550px]">
-        {/* Rotation */}
-        <div className="absolute top-6 left-6 flex flex-col gap-2 z-20 bg-slate-50/80 backdrop-blur p-3 rounded-2xl border border-slate-100">
+        <div className="absolute top-6 left-6 flex flex-col gap-2 z-20 bg-slate-50/80 backdrop-blur p-3 rounded-2xl border border-slate-100 shadow-sm text-center">
           <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">{t.rotAxis}</span>
           <div className="flex gap-2">
             <button onClick={() => setRot(r=>({...r, x: (r.x+90)%360}))} className="w-9 h-9 bg-white rounded-lg border border-slate-200 hover:border-indigo-300 font-bold">X</button>
@@ -253,7 +246,6 @@ function CubeSimulation({ lang, t }) {
           </div>
         </div>
 
-        {/* Configuration */}
         <div className="absolute top-6 right-6 flex flex-col gap-2 z-20 text-right">
           <div className="bg-white/80 backdrop-blur p-2 rounded-xl border border-slate-100 shadow-sm">
             <span className="text-[9px] font-bold text-slate-400 block uppercase mb-1">{t.startNode}</span>
@@ -277,10 +269,9 @@ function CubeSimulation({ lang, t }) {
               return <line key={`${s}-${e}`} x1={p1.px} y1={p1.py} x2={p2.px} y2={p2.py} stroke="#e2e8f0" strokeWidth="2" />;
             }))}
             
-            {/* Arrival Heading Indication */}
             {(() => {
               const pF = project(previous), pT = project(current);
-              return <path d={`M ${pF.px} ${pF.py} L ${pT.px} ${pT.py}`} stroke="#6366f1" strokeWidth="5" strokeLinecap="round" className="opacity-30 transition-all duration-500" />;
+              return <path d={`M ${pF.px} ${pF.py} L ${pT.px} ${pT.py}`} stroke="#6366f1" strokeWidth="5" strokeLinecap="round" className="opacity-20 transition-all duration-500" />;
             })()}
 
             {!isReplaying && [
@@ -298,7 +289,6 @@ function CubeSimulation({ lang, t }) {
               );
             })}
 
-            {/* THE ANT */}
             {(() => {
               const p = project(current);
               return (
@@ -313,13 +303,13 @@ function CubeSimulation({ lang, t }) {
 
         <div className="w-full flex justify-between items-end px-4 mb-4">
           <div className="text-[9px] font-bold text-slate-400 uppercase space-y-1">
-            <div className="flex items-center"><div className="w-2 bg-amber-400 h-2 rounded-full mr-1"/>{t.startNode}: {startPoint.node}</div>
-            <div className="flex items-center"><div className="w-2 bg-indigo-500 h-2 rounded-full mr-1"/>{t.node}: {current}</div>
+            <div className="flex items-center"><div className="w-2 bg-amber-400 h-2 rounded-full mr-1" />{t.startNode}: {startPoint.node}</div>
+            <div className="flex items-center"><div className="w-2 bg-indigo-500 h-2 rounded-full mr-1" />{t.node}: {current}</div>
           </div>
           <div className="flex flex-col items-end gap-2">
             <div className="bg-slate-100 px-2 py-0.5 rounded text-[10px] font-black text-slate-400">{logicPath.length} STEPS</div>
             <div className="bg-slate-900 px-5 py-3 rounded-2xl text-white font-mono text-2xl font-black tracking-[0.2em] shadow-2xl max-w-[280px] break-all leading-none">
-              {displayPath || t.noPath}
+              {activePathString || t.noPath}
             </div>
           </div>
         </div>
@@ -328,16 +318,16 @@ function CubeSimulation({ lang, t }) {
       <div className="lg:col-span-5 space-y-6">
         <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-slate-100">
           <div className="grid grid-cols-3 gap-4 mb-8">
-            <button onClick={() => moveAnt('L')} className="bg-rose-500 hover:bg-rose-600 text-white rounded-3xl py-6 shadow-xl shadow-rose-100 transition-all active:scale-90">
-              <span className="text-3xl font-black block">{t.chars.L}</span>
+            <button onClick={() => moveAnt('L')} className="bg-rose-500 hover:bg-rose-600 text-white rounded-3xl py-6 shadow-xl shadow-rose-100 transition-all active:scale-90 flex flex-col items-center">
+              <span className="text-3xl font-black">{t.chars.L}</span>
               <span className="text-[10px] font-bold opacity-60 uppercase">{t.left}</span>
             </button>
-            <button onClick={() => moveAnt('R')} className="bg-emerald-500 hover:bg-emerald-600 text-white rounded-3xl py-6 shadow-xl shadow-emerald-100 transition-all active:scale-90">
-              <span className="text-3xl font-black block">{t.chars.R}</span>
+            <button onClick={() => moveAnt('R')} className="bg-emerald-500 hover:bg-emerald-600 text-white rounded-3xl py-6 shadow-xl shadow-emerald-100 transition-all active:scale-90 flex flex-col items-center">
+              <span className="text-3xl font-black">{t.chars.R}</span>
               <span className="text-[10px] font-bold opacity-60 uppercase">{t.right}</span>
             </button>
-            <button onClick={() => moveAnt('B')} className="bg-slate-700 hover:bg-slate-800 text-white rounded-3xl py-6 shadow-xl shadow-slate-100 transition-all active:scale-90">
-              <span className="text-3xl font-black block">{t.chars.B}</span>
+            <button onClick={() => moveAnt('B')} className="bg-slate-700 hover:bg-slate-800 text-white rounded-3xl py-6 shadow-xl shadow-slate-100 transition-all active:scale-90 flex flex-col items-center">
+              <span className="text-3xl font-black">{t.chars.B}</span>
               <span className="text-[10px] font-bold opacity-60 uppercase">{t.back}</span>
             </button>
           </div>
@@ -346,7 +336,7 @@ function CubeSimulation({ lang, t }) {
             <button onClick={undo} className="flex-1 bg-slate-50 hover:bg-slate-100 text-slate-600 font-bold py-4 rounded-2xl border border-slate-200 transition-all flex items-center justify-center gap-2">
               ⌫ {t.undo}
             </button>
-            <button onClick={startReplay} disabled={isReplaying || logicPath.length===0} className="flex-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 font-bold py-4 rounded-2xl border border-indigo-100 transition-all disabled:opacity-20">
+            <button onClick={startReplay} disabled={isReplaying || logicPath.length===0} className="flex-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 font-bold py-4 rounded-2xl border border-indigo-100 transition-all disabled:opacity-20 flex items-center justify-center gap-2">
               ▶️ {t.replay}
             </button>
           </div>
@@ -355,15 +345,22 @@ function CubeSimulation({ lang, t }) {
         </div>
 
         <div className="bg-slate-900 p-8 rounded-[2.5rem] shadow-2xl space-y-4">
-          <h3 className="text-slate-500 font-black text-[10px] uppercase tracking-widest">{t.saved}</h3>
+          <div className="flex justify-between items-center">
+            <h3 className="text-slate-500 font-black text-[10px] uppercase tracking-widest">{t.saved}</h3>
+            <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">{t.autoSave}</span>
+          </div>
           <div className="space-y-3">
             {slots.map((s, i) => (
-              <div key={i} onClick={() => loadSlot(s)} className={`flex items-center gap-4 p-4 rounded-2xl transition-all cursor-pointer ${s ? 'bg-slate-800 border border-slate-700 hover:border-slate-500 shadow-lg' : 'border border-slate-800 opacity-20'}`}>
+              <div key={i} onClick={() => loadSlot(s)} className={`flex items-center gap-4 p-4 rounded-2xl transition-all cursor-pointer ${s ? 'bg-slate-800 border border-slate-700 hover:border-slate-500 shadow-lg' : 'border border-slate-800/50 opacity-20'}`}>
                 <span className="text-slate-600 font-black text-xs">{i+1}</span>
-                <span className="flex-1 font-mono text-xs font-black tracking-widest text-amber-400 truncate">
+                <span className="flex-1 font-mono text-xs font-black tracking-widest text-amber-400 truncate uppercase">
                   {s ? s.map(c => t.chars[c]).join('') : "---"}
                 </span>
-                {s && <button onClick={e=>{e.stopPropagation(); const n=[...pinned]; n[i]=!n[i]; setPinned(n)}} className={pinned[i]?'opacity-100':'opacity-30 hover:opacity-100'}>📌</button>}
+                {s && (
+                  <button onClick={e=>{e.stopPropagation(); const n=[...pinned]; n[i]=!n[i]; setPinned(n)}} className={pinned[i]?'opacity-100 drop-shadow-[0_0_5px_#fbbf24]':'opacity-30 hover:opacity-100'}>
+                    📌
+                  </button>
+                )}
               </div>
             ))}
           </div>
