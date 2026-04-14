@@ -11,18 +11,26 @@ const ADJACENCY = {
 };
 
 /**
- * FIXED RELATIVE TURNS (PERSPECTIVE AWARE)
- * [LeftNeighbor, RightNeighbor]
+ * RE-DERIVED RELATIVE TURNS (PERSPECTIVE AWARE)
+ * [LeftNeighbor, RightNeighbor] based on fixed coordinate system and consistent rotation rule.
  */
 const RELATIVE_TURNS = {
-  "2-6": [7, 5], "5-6": [2, 7], "7-6": [5, 2], // At 6
-  "6-2": [3, 1], "1-2": [6, 3], "3-2": [1, 6], // At 2
-  "6-5": [1, 4], "1-5": [4, 6], "4-5": [6, 1], // At 5
-  "6-7": [4, 3], "4-7": [3, 6], "3-7": [6, 4], // At 7
-  "2-1": [0, 5], "5-1": [2, 0], "0-1": [5, 2], // At 1
-  "2-3": [7, 0], "7-3": [0, 2], "0-3": [2, 7], // At 3
-  "1-0": [3, 4], "3-0": [4, 1], "4-0": [1, 3], // At 0
-  "5-4": [0, 7], "0-4": [7, 5], "7-4": [5, 0], // At 4
+  // Node 0 (0,0,0)
+  "1-0": [4, 3], "3-0": [1, 4], "4-0": [3, 1],
+  // Node 1 (1,0,0)
+  "0-1": [5, 2], "2-1": [0, 5], "5-1": [2, 0],
+  // Node 2 (1,1,0)
+  "1-2": [6, 3], "3-2": [1, 6], "6-2": [3, 1],
+  // Node 3 (0,1,0)
+  "0-3": [2, 7], "2-3": [7, 0], "7-3": [0, 2],
+  // Node 4 (0,0,1)
+  "0-4": [7, 5], "5-4": [0, 7], "7-4": [5, 0],
+  // Node 5 (1,0,1)
+  "1-5": [4, 6], "4-5": [6, 1], "6-5": [1, 4],
+  // Node 6 (1,1,1)
+  "2-6": [7, 5], "5-6": [2, 7], "7-6": [5, 2],
+  // Node 7 (0,1,1)
+  "3-7": [6, 4], "4-7": [3, 6], "6-7": [4, 3],
 };
 
 const TRANSLATIONS = {
@@ -59,7 +67,7 @@ export default function Home() {
             <p className="text-slate-500 text-sm font-medium">{t.subtitle}</p>
           </div>
           <button 
-            onClick={() => setLang(lang === 'en' ? 'hu' : 'en')}
+            onClick={() => setLang(lang === 'en') ? 'hu' : 'en'}
             className="px-6 py-2 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all active:scale-95"
           >
             {lang === 'en' ? 'Magyar' : 'English'}
@@ -79,12 +87,17 @@ function CubeSimulation({ lang, t }) {
   const [isModified, setIsModified] = useState(false);
   const [slots, setSlots] = useState(Array(5).fill(null));
   const [pinned, setPinned] = useState(Array(5).fill(false));
-  const [rot, setRot] = useState({ x: 25, y: -30, z: 0 });
+  const [rot, setRot] = useState({ x: 25, y: -30, z: 0 }); // Adjusted to -30 for better visibility
   const [isReplaying, setIsReplaying] = useState(false);
+  const [replayStep, setReplayStep] = useState(-1); // New state for highlighting
   const replayRef = useRef(null);
 
   const displayChars = useMemo(() => lang === 'en' ? TRANSLATIONS.en.chars : TRANSLATIONS.hu.chars, [lang]);
-  const activePathString = useMemo(() => logicPath.map(c => displayChars[c]).join(''), [logicPath, displayChars]);
+  const formatPath = (pathArr) => {
+    if (!pathArr || pathArr.length === 0) return t.noPath;
+    return pathArr.map(c => displayChars[c]).join('').match(/.{1,5}/g).join(' ');
+  };
+  const activePathString = useMemo(() => formatPath(logicPath), [logicPath, displayChars, t.noPath]);
 
   const opt = useMemo(() => {
     const key = `${previous}-${current}`;
@@ -107,16 +120,16 @@ function CubeSimulation({ lang, t }) {
 
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (e.target.tagName === 'SELECT') return;
+      if (e.target.tagName === 'SELECT' || e.repeat) return; // Prevent continuous firing
       const key = e.key.toUpperCase();
       if (lang === 'en') {
         if (key === 'L') moveAnt('L');
         if (key === 'R') moveAnt('R');
         if (key === 'B') moveAnt('B');
       } else {
-        if (key === 'B') moveAnt('L');
-        if (key === 'J') moveAnt('R');
-        if (key === 'V') moveAnt('B');
+        if (key === 'B') moveAnt('L'); // 'B' (Bal) for Left
+        if (key === 'J') moveAnt('R'); // 'J' (Jobb) for Right
+        if (key === 'V') moveAnt('B'); // 'V' (Vissza) for Back
       }
       if (e.key === 'Backspace') undo();
     };
@@ -127,14 +140,18 @@ function CubeSimulation({ lang, t }) {
   const stopReplay = () => {
     if (replayRef.current) clearInterval(replayRef.current);
     setIsReplaying(false);
+    setReplayStep(-1);
   };
 
   const startReplay = () => {
     if (isReplaying || logicPath.length === 0) return;
     stopReplay();
     setIsReplaying(true);
+    setReplayStep(0);
+    
     let step = 0;
-    let c = startPoint.node, p = startPoint.from;
+    let c = startPoint.node;
+    let p = startPoint.from;
     setCurrent(c); setPrevious(p);
 
     replayRef.current = setInterval(() => {
@@ -148,6 +165,7 @@ function CubeSimulation({ lang, t }) {
       const next = turn === 'B' ? p : (turn === 'L' ? L : R);
       p = c; c = next;
       setPrevious(p); setCurrent(c);
+      setReplayStep(step);
       step++;
     }, 600);
   };
@@ -174,7 +192,7 @@ function CubeSimulation({ lang, t }) {
       const idx = slots.findIndex((s, i) => !pinned[i]);
       if (idx !== -1) {
         const newSlots = [...slots];
-        newSlots[idx] = [...logicPath];
+        newSlots[idx] = [...logicPath]; // Save logicPath array
         setSlots(newSlots);
       }
     }
@@ -308,8 +326,18 @@ function CubeSimulation({ lang, t }) {
           </div>
           <div className="flex flex-col items-end gap-2">
             <div className="bg-slate-100 px-2 py-0.5 rounded text-[10px] font-black text-slate-400">{logicPath.length} STEPS</div>
-            <div className="bg-slate-900 px-5 py-3 rounded-2xl text-white font-mono text-2xl font-black tracking-[0.2em] shadow-2xl max-w-[280px] break-all leading-none">
-              {activePathString || t.noPath}
+            <div className="bg-slate-900 px-[1.125rem] py-3 rounded-2xl text-white font-mono text-2xl font-black tracking-[0.2em] shadow-2xl max-w-[280px] break-all leading-none">
+              {logicPath.map((char, idx) => (
+                <span key={idx} className={replayStep === idx ? 'text-yellow-400' : ''}>
+                  {displayChars[char]}
+                </span>
+              )).reduce((acc, curr, idx) => {
+                if (idx > 0 && idx % 5 === 0) {
+                  acc.push(<span key={`space-${idx}`} className="w-3 inline-block"> </span>);
+                }
+                acc.push(curr);
+                return acc;
+              }, []) || t.noPath}
             </div>
           </div>
         </div>
@@ -354,7 +382,7 @@ function CubeSimulation({ lang, t }) {
               <div key={i} onClick={() => loadSlot(s)} className={`flex items-center gap-4 p-4 rounded-2xl transition-all cursor-pointer ${s ? 'bg-slate-800 border border-slate-700 hover:border-slate-500 shadow-lg' : 'border border-slate-800/50 opacity-20'}`}>
                 <span className="text-slate-600 font-black text-xs">{i+1}</span>
                 <span className="flex-1 font-mono text-xs font-black tracking-widest text-amber-400 truncate uppercase">
-                  {s ? s.map(c => t.chars[c]).join('') : "---"}
+                  {s ? s.map(c => t.chars[c]).join('').match(/.{1,5}/g).join(' ') : "---"}
                 </span>
                 {s && (
                   <button onClick={e=>{e.stopPropagation(); const n=[...pinned]; n[i]=!n[i]; setPinned(n)}} className={pinned[i]?'opacity-100 drop-shadow-[0_0_5px_#fbbf24]':'opacity-30 hover:opacity-100'}>
