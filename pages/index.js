@@ -130,7 +130,8 @@ function CubeSimulation({ lang, t }) {
   const formatPath = (pathArr) => {
     if (!pathArr || pathArr.length === 0) return t.noPath;
     const formatted = pathArr.map(c => displayChars[c]).join('');
-    return formatted.match(/.{1,5}/g).join(' ');
+    const grouped = formatted.match(/.{1,5}/g);
+    return grouped ? grouped.join(' ') : formatted; 
   };
   const activePathString = useMemo(() => formatPath(logicPath), [logicPath, displayChars, t.noPath]);
 
