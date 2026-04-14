@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 
 const BASE_VERTICES = [
@@ -10,28 +11,154 @@ const ADJACENCY = {
   4: [0, 5, 7], 5: [1, 4, 6], 6: [2, 5, 7], 7: [3, 4, 6],
 };
 
-/**
- * RE-DERIVED RELATIVE TURNS (PERSPECTIVE AWARE)
- * [LeftNeighbor, RightNeighbor] based on fixed coordinate system and consistent rotation rule.
- */
-const RELATIVE_TURNS = {
-  // Node 0 (0,0,0)
-  "1-0": [4, 3], "3-0": [1, 4], "4-0": [3, 1],
-  // Node 1 (1,0,0)
-  "0-1": [5, 2], "2-1": [0, 5], "5-1": [2, 0],
-  // Node 2 (1,1,0)
-  "1-2": [6, 3], "3-2": [1, 6], "6-2": [3, 1],
-  // Node 3 (0,1,0)
-  "0-3": [2, 7], "2-3": [7, 0], "7-3": [0, 2],
-  // Node 4 (0,0,1)
-  "0-4": [7, 5], "5-4": [0, 7], "7-4": [5, 0],
-  // Node 5 (1,0,1)
-  "1-5": [4, 6], "4-5": [6, 1], "6-5": [1, 4],
-  // Node 6 (1,1,1)
-  "2-6": [7, 5], "5-6": [2, 7], "7-6": [5, 2],
-  // Node 7 (0,1,1)
-  "3-7": [6, 4], "4-7": [3, 6], "6-7": [4, 3],
+// Function to calculate Left/Right turns based on relative vectors
+const calculateRelativeTurns = () => {
+  const turns = {};
+  
+  for (let current = 0; current < 8; current++) {
+    const C_coords = BASE_VERTICES[current];
+    
+    for (const previous of ADJACENCY[current]) {
+      const P_coords = BASE_VERTICES[previous];
+      const key = `${previous}-${current}`;
+      
+      const incoming_vec = [C_coords[0] - P_coords[0], C_coords[1] - P_coords[1], C_coords[2] - P_coords[2]];
+      
+      const neighbors = ADJACENCY[current].filter(n => n !== previous);
+      if (neighbors.length !== 2) continue; // Should always be 2
+      
+      const N1_coords = BASE_VERTICES[neighbors[0]];
+      const N2_coords = BASE_VERTICES[neighbors[1]];
+      
+      const vec_to_N1 = [N1_coords[0] - C_coords[0], N1_coords[1] - C_coords[1], N1_coords[2] - C_coords[2]];
+      const vec_to_N2 = [N2_coords[0] - C_coords[0], N2_coords[1] - C_coords[1], N2_coords[2] - C_coords[2]];
+
+      let Left_node = -1;
+      let Right_node = -1;
+
+      // Determine which axis was the incoming axis
+      let incoming_axis_idx = -1;
+      if (incoming_vec[0] !== 0) incoming_axis_idx = 0;
+      else if (incoming_vec[1] !== 0) incoming_axis_idx = 1;
+      else if (incoming_vec[2] !== 0) incoming_axis_idx = 2;
+
+      // Apply the user's defined cyclic rule based on the incoming axis
+      // User's example "0-1": (0,0,0) to (1,0,0) = incoming +X. Left is +Y (node 2), Right is +Z (node 5).
+      // This establishes a (Forward(axis_i), Left(axis_j), Right(axis_k)) mapping where (i,j,k) follows a specific order.
+      //
+      // Based on (Fwd_X, Left_Y, Right_Z) for positive directions, let's generalize:
+      // Canonical cycle: X -> Y -> Z -> X
+      // For movement along +X: Left is +Y-like, Right is +Z-like
+      // For movement along +Y: Left is +Z-like, Right is +X-like
+      // For movement along +Z: Left is +X-like, Right is +Y-like
+      //
+      // For negative movement along an axis (e.g., -X):
+      // Left is -Y-like, Right is -Z-like etc. (i.e. signs of left/right follow sign of incoming axis' new direction)
+      
+      const axisMap = [
+        { axis: 0, leftTurnAxis: 1, rightTurnAxis: 2 }, // Incoming X: Left is Y-like, Right is Z-like
+        { axis: 1, leftTurnAxis: 2, rightTurnAxis: 0 }, // Incoming Y: Left is Z-like, Right is X-like
+        { axis: 2, leftTurnAxis: 0, rightTurnAxis: 1 }, // Incoming Z: Left is X-like, Right is Y-like
+      ];
+
+      const currentAxisMap = axisMap[incoming_axis_idx];
+      const expectedLeftAxis = currentAxisMap.leftTurnAxis;
+      const expectedRightAxis = currentAxisMap.rightTurnAxis;
+
+      // We use the sign of the incoming vector component to determine the sign of the Left/Right turn axes.
+      // This is the core to making it "perspective aware" with respect to the cube's fixed basis.
+      const incoming_sign_val = incoming_vec[incoming_axis_idx];
+
+      // Check N1
+      if (vec_to_N1[expectedLeftAxis] !== 0 && Math.sign(vec_to_N1[expectedLeftAxis]) === Math.sign(incoming_sign_val)) {
+        Left_node = neighbors[0];
+      } else if (vec_to_N1[expectedRightAxis] !== 0 && Math.sign(vec_to_N1[expectedRightAxis]) === Math.sign(incoming_sign_val)) {
+        Right_node = neighbors[0];
+      }
+
+      // Check N2
+      if (vec_to_N2[expectedLeftAxis] !== 0 && Math.sign(vec_to_N2[expectedLeftAxis]) === Math.sign(incoming_sign_val)) {
+        Left_node = neighbors[1];
+      } else if (vec_to_N2[expectedRightAxis] !== 0 && Math.sign(vec_to_N2[expectedRightAxis]) === Math.sign(incoming_sign_val)) {
+        Right_node = neighbors[1];
+      }
+      
+      // Handle cases where signs might need to be inverted for correct L/R.
+      // The rule isn't simply `Math.sign(incoming_sign_val)`.
+      // It's more about how the axis rotation plays out.
+      
+      // Let's re-think L/R for specific (P,C) based on the cross product concept but simplified for axial moves.
+      // This simplified mapping rule I devised before ('X -> Y -> Z' cycle for turns for '+' direction)
+      // seems directly inverted to user's "0-1" L:2 (+Y), R:5 (+Z) for incoming +X.
+      // My old rule was "Left is (incoming_axis+1)%3 " and "Right is (incoming_axis+2)%3" which means
+      // Incoming X (0): Left should be Y (1), Right should be Z (2). This matches user's expectation (L=+Y, R=+Z) for +X.
+      // So the previous `RELATIVE_TURNS` table was likely just scrambled, not the rule itself being inverted.
+      // Re-running generation with proper mapping of coords to axis.
+
+      // Define standard positive rotations for Left/Right around incoming axis
+      // (This needs to be VERY precise)
+      
+      // Let's use vector math for L/R without manual mapping.
+      // Define a "global up" vector for the cube (e.g., [0,0,1] or [0,1,0]).
+      // For movement P -> C (vector V_fwd = C-P)
+      // If V_fwd is along X: L/R is along Y/Z
+      // If V_fwd is along Y: L/R is along X/Z
+      // If V_fwd is along Z: L/R is along X/Y
+
+      // With user's example: P=0(0,0,0), C=1(1,0,0) => V_fwd = [1,0,0] (+X)
+      // Neighbors of C=1 (excluding P=0) are 2(1,1,0) and 5(1,0,1).
+      // V_C_to_2 = [0,1,0] (+Y)
+      // V_C_to_5 = [0,0,1] (+Z)
+      // User says Left to 2 (+Y), Right to 5 (+Z)
+
+      // This is a direct mapping of the perpendicular axes.
+      // If incoming_axis_idx=0 (+X), then Left is the +Y direction, Right is the +Z direction from C
+      // If incoming_axis_idx=1 (+Y), then Left is the +Z direction, Right is the +X direction from C
+      // If incoming_axis_idx=2 (+Z), then Left is the +X direction, Right is the +Y direction from C
+
+      // This pattern is (incoming_axis_idx -> Left_axis_idx, Right_axis_idx)
+      // 0 -> (1, 2)
+      // 1 -> (2, 0)
+      // 2 -> (0, 1)
+
+      const turnAxisOrder = [
+          [1, 2], // If incoming is X (0), Left is Y (1), Right is Z (2)
+          [2, 0], // If incoming is Y (1), Left is Z (2), Right is X (0)
+          [0, 1]  // If incoming is Z (2), Left is X (0), Right is Y (1)
+      ];
+
+      const [expectedLeftAxisIdx, expectedRightAxisIdx] = turnAxisOrder[incoming_axis_idx];
+
+      const getTargetNode = (currentCoords, targetAxisIdx, targetDirSign) => {
+          const targetCoords = [...currentCoords];
+          targetCoords[targetAxisIdx] += targetDirSign;
+          for (let i = 0; i < 8; i++) {
+              if (BASE_VERTICES[i][0] === targetCoords[0] &&
+                  BASE_VERTICES[i][1] === targetCoords[1] &&
+                  BASE_VERTICES[i][2] === targetCoords[2]) {
+                  return i;
+              }
+          }
+          return -1; // Should not happen
+      };
+
+      // Determine the direction sign for turn axes based on the incoming axis's *absolute* direction.
+      // If incoming is +X, Left is +Y, Right is +Z.
+      // If incoming is -X, Left is -Y, Right is -Z.
+      // This means the sign of the turn vector is the same as the sign of the incoming vector for the incoming axis.
+      const turn_sign = incoming_sign;
+
+
+      Left_node = getTargetNode(C_coords, expectedLeftAxisIdx, turn_sign);
+      Right_node = getTargetNode(C_coords, expectedRightAxisIdx, turn_sign);
+
+      turns[key] = [Left_node, Right_node];
+    }
+  }
+  return turns;
 };
+
+const RELATIVE_TURNS = calculateRelativeTurns();
 
 const TRANSLATIONS = {
   en: {
@@ -67,7 +194,7 @@ export default function Home() {
             <p className="text-slate-500 text-sm font-medium">{t.subtitle}</p>
           </div>
           <button 
-            onClick={() => setLang(lang === 'en') ? 'hu' : 'en'}
+            onClick={() => setLang(lang === 'en' ? 'hu' : 'en')}
             className="px-6 py-2 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all active:scale-95"
           >
             {lang === 'en' ? 'Magyar' : 'English'}
@@ -95,7 +222,8 @@ function CubeSimulation({ lang, t }) {
   const displayChars = useMemo(() => lang === 'en' ? TRANSLATIONS.en.chars : TRANSLATIONS.hu.chars, [lang]);
   const formatPath = (pathArr) => {
     if (!pathArr || pathArr.length === 0) return t.noPath;
-    return pathArr.map(c => displayChars[c]).join('').match(/.{1,5}/g).join(' ');
+    const formatted = pathArr.map(c => displayChars[c]).join('');
+    return formatted.match(/.{1,5}/g).join(' ');
   };
   const activePathString = useMemo(() => formatPath(logicPath), [logicPath, displayChars, t.noPath]);
 
