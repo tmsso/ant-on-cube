@@ -12,29 +12,42 @@ const ADJACENCY = {
 
 const calculateRelativeTurns = () => {
   const turns = {};
+  const getTurnNode = (fromCoords, turnAxis, turnSign) => {
+    const targetCoords = [...fromCoords];
+    targetCoords[turnAxis] += turnSign; 
+    for (let i = 0; i < 8; i++) {
+      const v = BASE_VERTICES[i];
+      if (Math.abs(v[0] - targetCoords[0]) < 0.1 &&
+          Math.abs(v[1] - targetCoords[1]) < 0.1 &&
+          Math.abs(v[2] - targetCoords[2]) < 0.1) return i;
+    }
+    return -1;
+  };
+
   for (let current = 0; current < 8; current++) {
     const C_coords = BASE_VERTICES[current];
     for (const previous of ADJACENCY[current]) {
       const P_coords = BASE_VERTICES[previous];
       const key = `${previous}-${current}`;
-      const incoming_vec = [C_coords[0] - P_coords[0], C_coords[1] - P_coords[1], C_coords[2] - P_coords[2]];
-      let axIdx = -1; let dirSign = 0;
-      if (incoming_vec[0] !== 0) { axIdx = 0; dirSign = Math.sign(incoming_vec[0]); }
-      else if (incoming_vec[1] !== 0) { axIdx = 1; dirSign = Math.sign(incoming_vec[1]); }
-      else if (incoming_vec[2] !== 0) { axIdx = 2; dirSign = Math.sign(incoming_vec[2]); }
-      const turnAxisCycle = [[1, 2], [2, 0], [0, 1]];
-      const [lIdx, rIdx] = turnAxisCycle[axIdx];
-      const getTurnNode = (fromCoords, turnAxis, turnSign) => {
-          const targetCoords = [...fromCoords];
-          targetCoords[turnAxis] += turnSign; 
-          for (let i = 0; i < 8; i++) {
-              if (BASE_VERTICES[i][0] === targetCoords[0] &&
-                  BASE_VERTICES[i][1] === targetCoords[1] &&
-                  BASE_VERTICES[i][2] === targetCoords[2]) return i;
-          }
-          return -1;
-      };
-      turns[key] = [getTurnNode(C_coords, lIdx, dirSign), getTurnNode(C_coords, rIdx, dirSign)];
+      const inVec = [C_coords[0]-P_coords[0], C_coords[1]-P_coords[1], C_coords[2]-P_coords[2]];
+      let ax = -1; let sign = 0;
+      if (inVec[0] !== 0) { ax = 0; sign = Math.sign(inVec[0]); }
+      else if (inVec[1] !== 0) { ax = 1; sign = Math.sign(inVec[1]); }
+      else if (inVec[2] !== 0) { ax = 2; sign = Math.sign(inVec[2]); }
+
+      // Axis cycles: X->Y, Y->Z, Z->X for "Left". Correct for sign.
+      const lAx = (ax + 1) % 3;
+      const rAx = (ax + 2) % 3;
+      
+      // Determine direction of turn based on current position relative to face
+      // If we move along X, Left is Y-axis. But which way? 
+      // Rule: Turn "outward" relative to the approach.
+      let lNode = getTurnNode(C_coords, lAx, 1);
+      if (lNode === -1) lNode = getTurnNode(C_coords, lAx, -1);
+      let rNode = getTurnNode(C_coords, rAx, 1);
+      if (rNode === -1) rNode = getTurnNode(C_coords, rAx, -1);
+
+      turns[key] = [lNode, rNode];
     }
   }
   return turns;
@@ -66,7 +79,6 @@ const TRANSLATIONS = {
 export default function Home() {
   const [lang, setLang] = useState('en');
   const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
-
   return (
     <div className="min-h-screen bg-slate-50 p-4 md:p-8 font-sans text-slate-900">
       <div className="max-w-6xl mx-auto space-y-6">
@@ -94,10 +106,8 @@ function CubeSimulation({ lang, t }) {
   const replayRef = useRef(null);
 
   const displayChars = useMemo(() => (TRANSLATIONS[lang] || TRANSLATIONS.en).chars, [lang]);
-  
   const formatPath = (pathArr) => {
     if (!pathArr || pathArr.length === 0) return (t?.noPath || "START");
-    if (!displayChars) return pathArr.join('');
     const formatted = pathArr.map(c => displayChars[c] || c).join('');
     const grouped = formatted.match(/.{1,5}/g);
     return grouped ? grouped.join(' ') : formatted; 
@@ -109,24 +119,24 @@ function CubeSimulation({ lang, t }) {
     return { L, R, B: previous };
   }, [current, previous]);
 
-  const moveAnt = (turn, isEvent = true) => {
-    if (isReplaying && isEvent) { stopReplay(); return; }
+  const moveAnt = (turn, isEv = true) => {
+    if (isReplaying && isEv) { stopReplay(); return; }
     const next = turn === 'B' ? opt.B : (turn === 'L' ? opt.L : opt.R);
-    if (next === null || next === undefined || next === -1) return;
+    if (next === null || next === -1) return;
     setPrevious(current); setCurrent(next);
-    if (isEvent) { setPath(prev => [...prev, turn]); setIsModified(true); }
+    if (isEv) { setPath(p => [...p, turn]); setIsModified(true); }
   };
 
   useEffect(() => {
-    const handleKeyDown = (e) => {
+    const handleKD = (e) => {
       if (e.target.tagName === 'SELECT' || e.repeat) return;
-      const key = e.key.toUpperCase();
-      if (lang === 'en') { if (key === 'L') moveAnt('L'); if (key === 'R') moveAnt('R'); if (key === 'B') moveAnt('B'); } 
-      else { if (key === 'B') moveAnt('L'); if (key === 'J') moveAnt('R'); if (key === 'V') moveAnt('B'); }
+      const k = e.key.toUpperCase();
+      if (lang === 'en') { if (k==='L') moveAnt('L'); if (k==='R') moveAnt('R'); if (k==='B') moveAnt('B'); } 
+      else { if (k==='B') moveAnt('L'); if (k==='J') moveAnt('R'); if (k==='V') moveAnt('B'); }
       if (e.key === 'Backspace') undo();
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKD);
+    return () => window.removeEventListener('keydown', handleKD);
   }, [opt, lang, isReplaying]);
 
   const stopReplay = () => { if (replayRef.current) clearInterval(replayRef.current); setIsReplaying(false); setReplayStep(-1); };
@@ -137,22 +147,20 @@ function CubeSimulation({ lang, t }) {
     setCurrent(c); setPrevious(p);
     replayRef.current = setInterval(() => {
       if (step >= logicPath.length) { stopReplay(); return; }
-      const turn = logicPath[step];
-      const key = `${p}-${c}`; const [L, R] = RELATIVE_TURNS[key] || [null, null];
-      const next = turn === 'B' ? p : (turn === 'L' ? L : R);
-      if (next === null || next === -1) { stopReplay(); return; }
-      p = c; c = next; setPrevious(p); setCurrent(c); setReplayStep(step); step++;
+      const t = logicPath[step]; const [L, R] = RELATIVE_TURNS[`${p}-${c}`] || [null, null];
+      const n = t === 'B' ? p : (t === 'L' ? L : R);
+      if (n === null || n === -1) { stopReplay(); return; }
+      p = c; c = n; setPrevious(p); setCurrent(c); setReplayStep(step); step++;
     }, 600);
   };
 
   const undo = () => {
     if (isReplaying) stopReplay(); if (logicPath.length === 0) return;
-    const newPath = logicPath.slice(0, -1); setPath(newPath); setIsModified(true);
+    const nP = logicPath.slice(0, -1); setPath(nP); setIsModified(true);
     let c = startPoint.node, p = startPoint.from;
-    newPath.forEach(turn => {
-      const key = `${p}-${c}`; const [L, R] = RELATIVE_TURNS[key] || [null, null];
-      const next = turn === 'B' ? p : (turn === 'L' ? L : R);
-      if (next !== null && next !== -1) { p = c; c = next; }
+    nP.forEach(t => { const [L, R] = RELATIVE_TURNS[`${p}-${c}`] || [null, null];
+      const n = t === 'B' ? p : (t === 'L' ? L : R);
+      if (n !== null && n !== -1) { p = c; c = n; }
     });
     setPrevious(p); setCurrent(c);
   };
@@ -160,32 +168,30 @@ function CubeSimulation({ lang, t }) {
   const reset = () => {
     if (isReplaying) stopReplay();
     if (logicPath.length > 0 && isModified) {
-      const idx = slots.findIndex((s, i) => !pinned[i]);
-      if (idx !== -1) { const newSlots = [...slots]; newSlots[idx] = [...logicPath]; setSlots(newSlots); }
+      const i = slots.findIndex((_, j) => !pinned[j]);
+      if (i !== -1) { const nS = [...slots]; nS[i] = [...logicPath]; setSlots(nS); }
     }
     setPath([]); setCurrent(startPoint.node); setPrevious(startPoint.from); setIsModified(false);
   };
 
-  const loadSlot = (logicArr) => {
-    if (!logicArr) return;
+  const loadSlot = (lA) => {
+    if (!lA) return;
     if (logicPath.length > 0 && isModified) {
-       const idx = slots.findIndex((s, i) => !pinned[i]);
-       if (idx !== -1) { const newSlots = [...slots]; newSlots[idx] = [...logicPath]; setSlots(newSlots); }
+       const i = slots.findIndex((_, j) => !pinned[j]);
+       if (i !== -1) { const nS = [...slots]; nS[i] = [...logicPath]; setSlots(nS); }
     }
-    setPath([...logicArr]); setIsModified(false);
+    setPath([...lA]); setIsModified(false);
     let c = startPoint.node, p = startPoint.from;
-    logicArr.forEach(turn => {
-      const key = `${p}-${c}`; const [L, R] = RELATIVE_TURNS[key] || [null, null];
-      const next = turn === 'B' ? p : (turn === 'L' ? L : R);
-      if (next !== null && next !== -1) { p = c; c = next; }
+    lA.forEach(t => { const [L, R] = RELATIVE_TURNS[`${p}-${c}`] || [null, null];
+      const n = t === 'B' ? p : (t === 'L' ? L : R);
+      if (n !== null && n !== -1) { p = c; c = n; }
     });
     setPrevious(p); setCurrent(c);
   };
 
   const project = (v) => {
-    if (v === -1) return { px: 0, py: 0 };
-    let [x, y, z] = BASE_VERTICES[v];
-    x -= 0.5; y -= 0.5; z -= 0.5;
+    if (v === -1 || v === null) return { px: 0, py: 0 };
+    let [x, y, z] = BASE_VERTICES[v]; x -= 0.5; y -= 0.5; z -= 0.5;
     const rx = rot.x * Math.PI / 180, ry = rot.y * Math.PI / 180, rz = rot.z * Math.PI / 180;
     let tx = x * Math.cos(ry) + z * Math.sin(ry), tz = z * Math.cos(ry) - x * Math.sin(ry);
     x = tx; z = tz;
@@ -193,18 +199,17 @@ function CubeSimulation({ lang, t }) {
     y = ty; z = tz;
     tx = x * Math.cos(rz) - y * Math.sin(rz); ty = y * Math.cos(rz) + x * Math.sin(rz);
     x = tx; y = ty;
-    const scale = 180; return { px: 200 + x * scale, py: 200 - y * scale };
+    return { px: 200 + x * 180, py: 200 - y * 180 };
   };
 
-  const getArrow = (target, color, label) => {
-    if (target === null || target === undefined || target === -1) return null;
-    const pF = project(current), pT = project(target);
-    const dx = pT.px - pF.px, dy = pT.py - pF.py;
-    const mx = pF.px + dx * 0.55, my = pF.py + dy * 0.55;
+  const getA = (targ, col, lab) => {
+    if (targ === null || targ === -1) return null;
+    const pF = project(current), pT = project(targ);
+    const dx = pT.px-pF.px, dy = pT.py-pF.py, mx = pF.px+dx*0.55, my = pF.py+dy*0.55;
     return (
-      <g key={label} className="transition-all duration-300">
-        <line x1={pF.px} y1={pF.py} x2={pT.px} y2={pT.py} stroke={color} strokeWidth="3" strokeDasharray="4 4" className="opacity-30" />
-        <circle cx={mx} cy={my} r="11" fill={color} className="shadow-lg" /><text x={mx} y={my+4} fontSize="11" fontWeight="900" fill="white" textAnchor="middle">{label}</text>
+      <g key={lab} className="transition-all duration-300">
+        <line x1={pF.px} y1={pF.py} x2={pT.px} y2={pT.py} stroke={col} strokeWidth="3" strokeDasharray="4 4" className="opacity-30" />
+        <circle cx={mx} cy={my} r="11" fill={col} className="shadow-lg" /><text x={mx} y={my+4} fontSize="11" fontWeight="900" fill="white" textAnchor="middle">{lab}</text>
       </g>
     );
   };
@@ -215,28 +220,32 @@ function CubeSimulation({ lang, t }) {
         <div className="absolute top-6 left-6 flex flex-col gap-2 z-20 bg-slate-50/80 backdrop-blur p-3 rounded-2xl border border-slate-100 shadow-sm text-center">
           <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">{t.rotAxis}</span>
           <div className="flex gap-2">
-            <button onClick={() => setRot(r=>({...r, x: (r.x+90)%360}))} className="w-9 h-9 bg-white rounded-lg border border-slate-200 hover:border-indigo-300 font-bold">X</button>
-            <button onClick={() => setRot(r=>({...r, y: (r.y+90)%360}))} className="w-9 h-9 bg-white rounded-lg border border-slate-200 hover:border-indigo-300 font-bold">Y</button>
-            <button onClick={() => setRot(r=>({...r, z: (r.z+90)%360}))} className="w-9 h-9 bg-white rounded-lg border border-slate-200 hover:border-indigo-300 font-bold">Z</button>
+            <button onClick={() => setRot(r=>({...r, x:(r.x+90)%360}))} className="w-9 h-9 bg-white rounded-lg border border-slate-200 font-bold">X</button>
+            <button onClick={() => setRot(r=>({...r, y:(r.y+90)%360}))} className="w-9 h-9 bg-white rounded-lg border border-slate-200 font-bold">Y</button>
+            <button onClick={() => setRot(r=>({...r, z:(r.z+90)%360}))} className="w-9 h-9 bg-white rounded-lg border border-slate-200 font-bold">Z</button>
           </div>
         </div>
         <div className="absolute top-6 right-6 flex flex-col gap-2 z-20 text-right">
           <div className="bg-white/80 backdrop-blur p-2 rounded-xl border border-slate-100 shadow-sm">
             <span className="text-[9px] font-bold text-slate-400 block uppercase mb-1">{t.startNode}</span>
-            <select value={startPoint.node} onChange={e=>{const n=parseInt(e.target.value); setStartPoint({node:n, from: ADJACENCY[n][0]}); reset()}} className="text-xs font-black p-1 border-none focus:ring-0">{[0,1,2,3,4,5,6,7].map(n=><option key={n} value={n}>{n}</option>)}</select>
+            <select value={startPoint.node} onChange={e=>{const n=parseInt(e.target.value); setStartPoint({node:n, from: ADJACENCY[n][0]}); reset()}} className="text-xs font-black p-1">
+              {[0,1,2,3,4,5,6,7].map(n=><option key={n} value={n}>{n}</option>)}
+            </select>
           </div>
           <div className="bg-white/80 backdrop-blur p-2 rounded-xl border border-slate-100 shadow-sm">
             <span className="text-[9px] font-bold text-slate-400 block uppercase mb-1">{t.startFrom}</span>
-            <select value={startPoint.from} onChange={e=>{setStartPoint(prev=>({...prev, from:parseInt(e.target.value)})); reset()}} className="text-xs font-black p-1 border-none focus:ring-0">{ADJACENCY[startPoint.node].map(n=><option key={n} value={n}>{n}</option>)}</select>
+            <select value={startPoint.from} onChange={e=>{setStartPoint(prev=>({...prev, from:parseInt(e.target.value)})); reset()}} className="text-xs font-black p-1">
+              {ADJACENCY[startPoint.node].map(n=><option key={n} value={n}>{n}</option>)}
+            </select>
           </div>
         </div>
         <div className="flex-1 flex items-center justify-center w-full">
           <svg viewBox="0 0 400 400" className="w-full h-full max-w-[400px] overflow-visible">
-            {Object.entries(ADJACENCY).map(([s, neighbors]) => neighbors.map(e => { if (parseInt(s) > e) return null; const p1 = project(s), p2 = project(e); return <line key={`${s}-${e}`} x1={p1.px} y1={p1.py} x2={p2.px} y2={p2.py} stroke="#e2e8f0" strokeWidth="2" />; }))}
-            {(() => { const pF = project(previous), pT = project(current); return <path d={`M ${pF.px} ${pF.py} L ${pT.px} ${pT.py}`} stroke="#6366f1" strokeWidth="5" strokeLinecap="round" className="opacity-20 transition-all duration-500" />; })()}
-            {!isReplaying && [{ target: opt.L, color: '#f43f5e', label: (displayChars?.L || t?.chars?.L || 'L') }, { target: opt.R, color: '#10b981', label: (displayChars?.R || t?.chars?.R || 'R') }].map(a => getArrow(a.target, a.color, a.label))}
-            {BASE_VERTICES.map((_, i) => { const p = project(i), isS = i === startPoint.node; return (<g key={i}><circle cx={p.px} cy={p.py} r={isS?7:4} fill={isS?'#fbbf24':'#cbd5e1'} className="transition-all duration-700" /><text x={p.px+8} y={p.py-8} className="text-[10px] fill-slate-300 font-bold select-none">{i}</text></g>); })}
-            {(() => { const p = project(current); return (<g transform={`translate(${p.px},${p.py})`} className="transition-all duration-500 ease-in-out"><circle r="14" fill="white" className="shadow-2xl" /><text fontSize="20" textAnchor="middle" y="7" className="select-none">🐜</text></g>); })()}
+            {Object.entries(ADJACENCY).map(([s, nbs]) => nbs.map(e => { if (parseInt(s) > e) return null; const p1 = project(s), p2 = project(e); return <line key={`${s}-${e}`} x1={p1.px} y1={p1.py} x2={p2.px} y2={p2.py} stroke="#e2e8f0" strokeWidth="2" />; }))}
+            {(() => { const pF = project(previous), pT = project(current); return <path d={`M ${pF.px} ${pF.py} L ${pT.px} ${pT.py}`} stroke="#6366f1" strokeWidth="5" strokeLinecap="round" className="opacity-20" />; })()}
+            {!isReplaying && [ { target: opt.L, color: '#f43f5e', label: (displayChars?.L || t?.chars?.L || 'L') }, { target: opt.R, color: '#10b981', label: (displayChars?.R || t?.chars?.R || 'R') } ].map(a => getA(a.target, a.color, a.label))}
+            {BASE_VERTICES.map((_, i) => { const p = project(i), isS = i === startPoint.node; return (<g key={i}><circle cx={p.px} cy={p.py} r={isS?7:4} fill={isS?'#fbbf24':'#cbd5e1'} /><text x={p.px+8} y={p.py-8} className="text-[10px] fill-slate-300 font-bold">{i}</text></g>); })}
+            {(() => { const p = project(current); return (<g transform={`translate(${p.px},${p.py})`} className="transition-all duration-500"><circle r="14" fill="white" className="shadow-2xl" /><text fontSize="20" textAnchor="middle" y="7">🐜</text></g>); })()}
           </svg>
         </div>
         <div className="w-full flex justify-between items-end px-4 mb-4">
@@ -251,15 +260,15 @@ function CubeSimulation({ lang, t }) {
       <div className="lg:col-span-5 space-y-6">
         <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-slate-100">
           <div className="grid grid-cols-3 gap-4 mb-8">
-            <button onClick={() => moveAnt('L')} className="bg-rose-500 hover:bg-rose-600 text-white rounded-3xl py-6 shadow-xl shadow-rose-100 transition-all active:scale-90 flex flex-col items-center"><span className="text-3xl font-black">{displayChars?.L || 'L'}</span><span className="text-[10px] font-bold opacity-60 uppercase">{t.left}</span></button>
-            <button onClick={() => moveAnt('R')} className="bg-emerald-500 hover:bg-emerald-600 text-white rounded-3xl py-6 shadow-xl shadow-emerald-100 transition-all active:scale-90 flex flex-col items-center"><span className="text-3xl font-black">{displayChars?.R || 'R'}</span><span className="text-[10px] font-bold opacity-60 uppercase">{t.right}</span></button>
-            <button onClick={() => moveAnt('B')} className="bg-slate-700 hover:bg-slate-800 text-white rounded-3xl py-6 shadow-xl shadow-slate-100 transition-all active:scale-90 flex flex-col items-center"><span className="text-3xl font-black">{displayChars?.B || 'B'}</span><span className="text-[10px] font-bold opacity-60 uppercase">{t.back}</span></button>
+            <button onClick={() => moveAnt('L')} className="bg-rose-500 hover:bg-rose-600 text-white rounded-3xl py-6 shadow-xl flex flex-col items-center"><span className="text-3xl font-black">{displayChars?.L || 'L'}</span><span className="text-[10px] font-bold opacity-60 uppercase">{t.left}</span></button>
+            <button onClick={() => moveAnt('R')} className="bg-emerald-500 hover:bg-emerald-600 text-white rounded-3xl py-6 shadow-xl flex flex-col items-center"><span className="text-3xl font-black">{displayChars?.R || 'R'}</span><span className="text-[10px] font-bold opacity-60 uppercase">{t.right}</span></button>
+            <button onClick={() => moveAnt('B')} className="bg-slate-700 hover:bg-slate-800 text-white rounded-3xl py-6 shadow-xl flex flex-col items-center"><span className="text-3xl font-black">{displayChars?.B || 'B'}</span><span className="text-[10px] font-bold opacity-60 uppercase">{t.back}</span></button>
           </div>
           <div className="flex gap-3">
             <button onClick={undo} className="flex-1 bg-slate-50 hover:bg-slate-100 text-slate-600 font-bold py-4 rounded-2xl border border-slate-200 transition-all flex items-center justify-center gap-2">⌫ {t.undo}</button>
             <button onClick={startReplay} disabled={isReplaying || (logicPath || []).length===0} className="flex-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 font-bold py-4 rounded-2xl border border-indigo-100 transition-all disabled:opacity-20 flex items-center justify-center gap-2">▶️ {t.replay}</button>
           </div>
-          <button onClick={reset} className="w-full mt-4 text-[10px] font-black text-slate-400 hover:text-rose-500 transition-colors uppercase tracking-[0.2em]">{t.clear}</button>
+          <button onClick={reset} className="w-full mt-4 text-[10px] font-black text-slate-400 hover:text-rose-500 uppercase tracking-[0.2em]">{t.clear}</button>
         </div>
         <div className="bg-slate-900 p-8 rounded-[2.5rem] shadow-2xl space-y-4">
           <div className="flex justify-between items-center"><h3 className="text-slate-500 font-black text-[10px] uppercase tracking-widest">{t.saved}</h3><span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">{t.autoSave}</span></div>
@@ -270,7 +279,7 @@ function CubeSimulation({ lang, t }) {
                 <span className="flex-1 font-mono text-xs font-black tracking-widest text-amber-400 truncate uppercase">
                   {s && displayChars ? s.map(c => displayChars[c] || c).join('').match(/.{1,5}/g).join(' ') : "---"}
                 </span>
-                {s && (<button onClick={e=>{e.stopPropagation(); const n=[...pinned]; n[i]=!n[i]; setPinned(n)}} className={pinned[i]?'opacity-100 drop-shadow-[0_0_5px_#fbbf24]':'opacity-30 hover:opacity-100'}>📌</button>)}
+                {s && (<button onClick={e=>{e.stopPropagation(); const n=[...pinned]; n[i]=!n[i]; setPinned(n)}} className={pinned[i]?'opacity-100 drop-shadow-[0_0_5px_#fbbf24]':'opacity-30'}>📌</button>)}
               </div>
             ))}
           </div>
