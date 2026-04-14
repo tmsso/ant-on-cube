@@ -10,54 +10,62 @@ const ADJACENCY = {
   4: [0, 5, 7], 5: [1, 4, 6], 6: [2, 5, 7], 7: [3, 4, 6],
 };
 
+/**
+ * FIXED RELATIVE TURNS
+ * Directions are calculated by imagining looking from 'prev' towards 'curr'.
+ * We determine Left/Right consistently using the cube geometry.
+ */
 const RELATIVE_TURNS = {
+  // At Node 6
   "2-6": [7, 5], "5-6": [2, 7], "7-6": [5, 2],
-  "6-2": [1, 3], "1-2": [3, 6], "3-2": [6, 1],
-  "6-5": [4, 1], "4-5": [1, 6], "1-5": [6, 4],
-  "6-7": [3, 4], "3-7": [4, 6], "4-7": [6, 3],
-  "2-1": [0, 5], "0-1": [5, 2], "5-1": [2, 0],
-  "2-3": [7, 0], "7-3": [0, 2], "0-3": [2, 7],
-  "1-0": [3, 4], "3-0": [4, 1], "4-0": [1, 3],
-  "5-4": [0, 7], "0-4": [7, 5], "7-4": [5, 0],
+  // At Node 2
+  "6-2": [3, 1], "1-2": [6, 3], "3-2": [1, 6],
+  // At Node 5
+  "6-5": [1, 4], "1-5": [4, 6], "4-5": [6, 1],
+  // At Node 7
+  "6-7": [4, 3], "4-7": [3, 6], "3-7": [6, 4],
+  // At Node 1
+  "2-1": [5, 0], "5-1": [0, 2], "0-1": [2, 5],
+  // At Node 3
+  "2-3": [0, 7], "0-3": [7, 2], "7-3": [2, 0],
+  // At Node 4
+  "5-4": [7, 0], "7-4": [0, 5], "0-4": [5, 7],
+  // At Node 0
+  "1-0": [4, 3], "4-0": [3, 1], "3-0": [1, 4],
 };
 
 const TRANSLATIONS = {
   en: {
-    title: "Ant on Cube 🐜",
-    subtitle: "Navigate relative to the ant's perspective.",
+    title: "Ant on Cube 🐜", subtitle: "Keyboard: L, R, B",
     left: "Left", right: "Right", back: "Back",
-    clear: "Clear Path", save: "Save to Slot", saved: "Saved Paths",
+    clear: "Clear Path", save: "Save", saved: "Saved Paths",
     noPath: "START", undo: "Undo", replay: "Replay",
-    startNode: "Start Node", startFrom: "Heading From",
-    rotAxis: "Rotation axis", autoSave: "AUTO-SAVE ON RESET",
-    node: "Node"
+    startNode: "Start Point", startFrom: "Heading From",
+    rotAxis: "Rotate", autoSave: "AUTO-SAVE ON RESET",
+    node: "Point", chars: { L: 'L', R: 'R', B: 'B' }
   },
   hu: {
-    title: "Hangya a kockán 🐜",
-    subtitle: "Irányítsd a hangyát a saját nézőpontjából.",
+    title: "Hangya a kockán 🐜", subtitle: "Billentyűk: B, J, V",
     left: "Bal", right: "Jobb", back: "Vissza",
-    clear: "Útvonal törlése", save: "Mentés", saved: "Mentett utak",
+    clear: "Törlés", save: "Mentés", saved: "Mentett utak",
     noPath: "RAJT", undo: "Visszavon", replay: "Lejátszás",
     startNode: "Kezdőpont", startFrom: "Iránypont",
-    rotAxis: "Forgatási tengelyek", autoSave: "AUTO-MENTÉS RESETNÉL",
-    node: "Pont"
+    rotAxis: "Forgatás", autoSave: "AUTO-MENTÉS",
+    node: "Pont", chars: { L: 'B', R: 'J', B: 'V' }
   }
 };
-
-const EN_CHARS = { L: 'L', R: 'R', B: 'B' };
-const HU_CHARS = { L: 'B', R: 'J', B: 'V' };
 
 export default function Home() {
   const [lang, setLang] = useState('en');
   const t = TRANSLATIONS[lang];
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4 font-sans text-slate-900">
+    <div className="min-h-screen bg-slate-50 p-4 md:p-8 font-sans text-slate-900">
       <div className="max-w-6xl mx-auto space-y-6">
         <header className="flex justify-between items-center bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
           <div>
             <h1 className="text-3xl font-black">{t.title}</h1>
-            <p className="text-slate-500 text-sm">{t.subtitle}</p>
+            <p className="text-slate-500 text-sm font-medium">{t.subtitle}</p>
           </div>
           <button 
             onClick={() => setLang(lang === 'en' ? 'hu' : 'en')}
@@ -76,18 +84,13 @@ function CubeSimulation({ lang, t }) {
   const [startPoint, setStartPoint] = useState({ node: 6, from: 2 });
   const [current, setCurrent] = useState(6);
   const [previous, setPrevious] = useState(2);
-  const [logicPath, setPath] = useState([]);
+  const [logicPath, setPath] = useState([]); // Internal representation: 'L', 'R', 'B'
   const [isModified, setIsModified] = useState(false);
-  const [slots, setSlots] = useState(Array(5).fill(null));
+  const [slots, setSlots] = useState(Array(5).fill(null)); // Stores logicPath array
   const [pinned, setPinned] = useState(Array(5).fill(false));
   const [rot, setRot] = useState({ x: 25, y: -45, z: 0 });
   const [isReplaying, setIsReplaying] = useState(false);
   const replayRef = useRef(null);
-
-  const displayPath = useMemo(() => {
-    const map = lang === 'en' ? EN_CHARS : HU_CHARS;
-    return logicPath.map(c => map[c]).join('');
-  }, [logicPath, lang]);
 
   const opt = useMemo(() => {
     const key = `${previous}-${current}`;
@@ -108,6 +111,25 @@ function CubeSimulation({ lang, t }) {
     }
   };
 
+  // Keyboard Controls
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      const key = e.key.toUpperCase();
+      if (lang === 'en') {
+        if (key === 'L') moveAnt('L');
+        if (key === 'R') moveAnt('R');
+        if (key === 'B') moveAnt('B');
+      } else {
+        if (key === 'B') moveAnt('L');
+        if (key === 'J') moveAnt('R');
+        if (key === 'V') moveAnt('B');
+      }
+      if (e.key === 'Backspace') undo();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [opt, lang, isReplaying]);
+
   const stopReplay = () => {
     if (replayRef.current) clearInterval(replayRef.current);
     setIsReplaying(false);
@@ -117,10 +139,8 @@ function CubeSimulation({ lang, t }) {
     if (isReplaying || logicPath.length === 0) return;
     stopReplay();
     setIsReplaying(true);
-    
     let step = 0;
-    let c = startPoint.node;
-    let p = startPoint.from;
+    let c = startPoint.node, p = startPoint.from;
     setCurrent(c); setPrevious(p);
 
     replayRef.current = setInterval(() => {
@@ -160,7 +180,7 @@ function CubeSimulation({ lang, t }) {
       const idx = slots.findIndex((s, i) => !pinned[i]);
       if (idx !== -1) {
         const newSlots = [...slots];
-        newSlots[idx] = logicPath.map(c => EN_CHARS[c]).join('');
+        newSlots[idx] = [...logicPath];
         setSlots(newSlots);
       }
     }
@@ -170,22 +190,20 @@ function CubeSimulation({ lang, t }) {
     setIsModified(false);
   };
 
-  const loadSlot = (str) => {
-    if (!str) return;
+  const loadSlot = (logicArr) => {
+    if (!logicArr) return;
     if (logicPath.length > 0 && isModified) {
        const idx = slots.findIndex((s, i) => !pinned[i]);
        if (idx !== -1) {
          const newSlots = [...slots];
-         newSlots[idx] = logicPath.map(c => EN_CHARS[c]).join('');
+         newSlots[idx] = [...logicPath];
          setSlots(newSlots);
        }
     }
-    const rev = { L: 'L', R: 'R', B: 'B', J: 'R', V: 'B' };
-    const newLogic = [...str].map(c => rev[c] || 'L');
-    setPath(newLogic);
+    setPath(logicArr);
     setIsModified(false);
     let c = startPoint.node, p = startPoint.from;
-    newLogic.forEach(turn => {
+    logicArr.forEach(turn => {
       const key = `${p}-${c}`;
       const [L, R] = RELATIVE_TURNS[key];
       const next = turn === 'B' ? p : (turn === 'L' ? L : R);
@@ -194,21 +212,16 @@ function CubeSimulation({ lang, t }) {
     setPrevious(p); setCurrent(c);
   };
 
-  // Improved Rotation/Projection
   const project = (v) => {
     let [x, y, z] = BASE_VERTICES[v];
     x -= 0.5; y -= 0.5; z -= 0.5;
     const rx = rot.x * Math.PI / 180, ry = rot.y * Math.PI / 180, rz = rot.z * Math.PI / 180;
-    // Y
     let tx = x * Math.cos(ry) + z * Math.sin(ry), tz = z * Math.cos(ry) - x * Math.sin(ry);
     x = tx; z = tz;
-    // X
     let ty = y * Math.cos(rx) - z * Math.sin(rx); tz = z * Math.cos(rx) + y * Math.sin(rx);
     y = ty; z = tz;
-    // Z
     tx = x * Math.cos(rz) - y * Math.sin(rz); ty = y * Math.cos(rz) + x * Math.sin(rz);
     x = tx; y = ty;
-
     const scale = 180;
     return { px: 200 + x * scale, py: 200 - y * scale };
   };
@@ -229,27 +242,27 @@ function CubeSimulation({ lang, t }) {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-      {/* Visualizer */}
       <div className="lg:col-span-7 bg-white p-6 rounded-[2.5rem] shadow-xl border border-slate-100 flex flex-col items-center relative overflow-hidden min-h-[550px]">
-        {/* Rotation near cube */}
-        <div className="absolute top-6 left-6 flex flex-col gap-2 z-20 bg-slate-50/80 backdrop-blur p-3 rounded-2xl border border-slate-100 shadow-sm">
+        {/* Rotation */}
+        <div className="absolute top-6 left-6 flex flex-col gap-2 z-20 bg-slate-50/80 backdrop-blur p-3 rounded-2xl border border-slate-100">
           <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">{t.rotAxis}</span>
           <div className="flex gap-2">
-            <button onClick={() => setRot(r=>({...r, x: (r.x+90)%360}))} className="w-9 h-9 bg-white rounded-lg border border-slate-200 hover:border-indigo-300 font-bold transition-all">X</button>
-            <button onClick={() => setRot(r=>({...r, y: (r.y+90)%360}))} className="w-9 h-9 bg-white rounded-lg border border-slate-200 hover:border-indigo-300 font-bold transition-all">Y</button>
-            <button onClick={() => setRot(r=>({...r, z: (r.z+90)%360}))} className="w-9 h-9 bg-white rounded-lg border border-slate-200 hover:border-indigo-300 font-bold transition-all">Z</button>
+            <button onClick={() => setRot(r=>({...r, x: (r.x+90)%360}))} className="w-9 h-9 bg-white rounded-lg border border-slate-200 hover:border-indigo-300 font-bold">X</button>
+            <button onClick={() => setRot(r=>({...r, y: (r.y+90)%360}))} className="w-9 h-9 bg-white rounded-lg border border-slate-200 hover:border-indigo-300 font-bold">Y</button>
+            <button onClick={() => setRot(r=>({...r, z: (r.z+90)%360}))} className="w-9 h-9 bg-white rounded-lg border border-slate-200 hover:border-indigo-300 font-bold">Z</button>
           </div>
         </div>
 
+        {/* Configuration */}
         <div className="absolute top-6 right-6 flex flex-col gap-2 z-20 text-right">
           <div className="bg-white/80 backdrop-blur p-2 rounded-xl border border-slate-100 shadow-sm">
-            <span className="text-[9px] font-bold text-slate-400 block mr-1 uppercase mb-1">{t.startNode}</span>
+            <span className="text-[9px] font-bold text-slate-400 block uppercase mb-1">{t.startNode}</span>
             <select value={startPoint.node} onChange={e=>{const n=parseInt(e.target.value); setStartPoint({node:n, from: ADJACENCY[n][0]}); reset()}} className="text-xs font-black p-1 border-none focus:ring-0">
               {[0,1,2,3,4,5,6,7].map(n=><option key={n} value={n}>{n}</option>)}
             </select>
           </div>
           <div className="bg-white/80 backdrop-blur p-2 rounded-xl border border-slate-100 shadow-sm">
-            <span className="text-[9px] font-bold text-slate-400 block mr-1 uppercase mb-1">{t.startFrom}</span>
+            <span className="text-[9px] font-bold text-slate-400 block uppercase mb-1">{t.startFrom}</span>
             <select value={startPoint.from} onChange={e=>{setStartPoint(prev=>({...prev, from:parseInt(e.target.value)})); reset()}} className="text-xs font-black p-1 border-none focus:ring-0">
               {ADJACENCY[startPoint.node].map(n=><option key={n} value={n}>{n}</option>)}
             </select>
@@ -264,20 +277,19 @@ function CubeSimulation({ lang, t }) {
               return <line key={`${s}-${e}`} x1={p1.px} y1={p1.py} x2={p2.px} y2={p2.py} stroke="#e2e8f0" strokeWidth="2" />;
             }))}
             
-            {/* Direction indicator from where it came */}
+            {/* Arrival Heading Indication */}
             {(() => {
               const pF = project(previous), pT = project(current);
-              return <path d={`M ${pF.px} ${pF.py} L ${pT.px} ${pT.py}`} stroke="#6366f1" strokeWidth="4" strokeLinecap="round" className="opacity-20 transition-all duration-500" />;
+              return <path d={`M ${pF.px} ${pF.py} L ${pT.px} ${pT.py}`} stroke="#6366f1" strokeWidth="5" strokeLinecap="round" className="opacity-30 transition-all duration-500" />;
             })()}
 
             {!isReplaying && [
-              { target: opt.L, color: '#f43f5e', label: lang === 'en' ? 'L' : 'B' },
-              { target: opt.R, color: '#10b981', label: lang === 'en' ? 'R' : 'J' }
+              { target: opt.L, color: '#f43f5e', label: t.chars.L },
+              { target: opt.R, color: '#10b981', label: t.chars.R }
             ].map(a => getArrow(a.target, a.color, a.label))}
 
             {BASE_VERTICES.map((_, i) => {
-              const p = project(i);
-              const isS = i === startPoint.node;
+              const p = project(i), isS = i === startPoint.node;
               return (
                 <g key={i}>
                   <circle cx={p.px} cy={p.py} r={isS?7:4} fill={isS?'#fbbf24':'#cbd5e1'} className="transition-all duration-700" />
@@ -291,60 +303,55 @@ function CubeSimulation({ lang, t }) {
               const p = project(current);
               return (
                 <g transform={`translate(${p.px},${p.py})`} className="transition-all duration-500 ease-in-out">
-                  <circle r="12" fill="white" className="shadow-xl" />
-                  <text fontSize="18" textAnchor="middle" y="6" className="select-none">🐜</text>
+                  <circle r="14" fill="white" className="shadow-2xl" />
+                  <text fontSize="20" textAnchor="middle" y="7" className="select-none">🐜</text>
                 </g>
               );
             })()}
           </svg>
         </div>
 
-        <div className="w-full flex justify-between items-center px-4 mb-4">
-          <div className="flex gap-4 text-[9px] font-bold text-slate-400 uppercase">
-            <div className="flex items-center"><div className="w-2 h-2 bg-amber-400 rounded-full mr-1" />{t.startNode}: {startPoint.node}</div>
-            <div className="flex items-center"><div className="w-2 h-2 bg-indigo-500 rounded-full mr-1" />{t.node} {current}</div>
+        <div className="w-full flex justify-between items-end px-4 mb-4">
+          <div className="text-[9px] font-bold text-slate-400 uppercase space-y-1">
+            <div className="flex items-center"><div className="w-2 bg-amber-400 h-2 rounded-full mr-1"/>{t.startNode}: {startPoint.node}</div>
+            <div className="flex items-center"><div className="w-2 bg-indigo-500 h-2 rounded-full mr-1"/>{t.node}: {current}</div>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="bg-slate-100 h-8 flex items-center px-3 rounded-lg text-[10px] font-black text-slate-400 select-none">
-              {logicPath.length} STEPS
-            </div>
-            <div className="bg-slate-900 px-4 py-2.5 rounded-2xl text-white font-mono text-xl font-black tracking-widest shadow-xl max-w-[200px] truncate">
+          <div className="flex flex-col items-end gap-2">
+            <div className="bg-slate-100 px-2 py-0.5 rounded text-[10px] font-black text-slate-400">{logicPath.length} STEPS</div>
+            <div className="bg-slate-900 px-5 py-3 rounded-2xl text-white font-mono text-2xl font-black tracking-[0.2em] shadow-2xl max-w-[280px] break-all leading-none">
               {displayPath || t.noPath}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Inputs */}
       <div className="lg:col-span-5 space-y-6">
         <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-slate-100">
-          <div className="grid grid-cols-3 gap-4 mb-8 text-center">
+          <div className="grid grid-cols-3 gap-4 mb-8">
             <button onClick={() => moveAnt('L')} className="bg-rose-500 hover:bg-rose-600 text-white rounded-3xl py-6 shadow-xl shadow-rose-100 transition-all active:scale-90">
-              <span className="text-3xl font-black block">{lang === 'en' ? 'L' : 'B'}</span>
+              <span className="text-3xl font-black block">{t.chars.L}</span>
               <span className="text-[10px] font-bold opacity-60 uppercase">{t.left}</span>
             </button>
             <button onClick={() => moveAnt('R')} className="bg-emerald-500 hover:bg-emerald-600 text-white rounded-3xl py-6 shadow-xl shadow-emerald-100 transition-all active:scale-90">
-              <span className="text-3xl font-black block">{lang === 'en' ? 'R' : 'J'}</span>
+              <span className="text-3xl font-black block">{t.chars.R}</span>
               <span className="text-[10px] font-bold opacity-60 uppercase">{t.right}</span>
             </button>
             <button onClick={() => moveAnt('B')} className="bg-slate-700 hover:bg-slate-800 text-white rounded-3xl py-6 shadow-xl shadow-slate-100 transition-all active:scale-90">
-              <span className="text-3xl font-black block">{lang === 'en' ? 'B' : 'V'}</span>
+              <span className="text-3xl font-black block">{t.chars.B}</span>
               <span className="text-[10px] font-bold opacity-60 uppercase">{t.back}</span>
             </button>
           </div>
 
           <div className="flex gap-3">
             <button onClick={undo} className="flex-1 bg-slate-50 hover:bg-slate-100 text-slate-600 font-bold py-4 rounded-2xl border border-slate-200 transition-all flex items-center justify-center gap-2">
-              <span className="text-xl">⌫</span> {t.undo}
+              ⌫ {t.undo}
             </button>
-            <button onClick={startReplay} disabled={isReplaying || logicPath.length===0} className="flex-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 font-bold py-4 rounded-2xl border border-indigo-100 transition-all disabled:opacity-20 flex items-center justify-center gap-2">
-              <span className="text-lg">▶️</span> {t.replay}
+            <button onClick={startReplay} disabled={isReplaying || logicPath.length===0} className="flex-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 font-bold py-4 rounded-2xl border border-indigo-100 transition-all disabled:opacity-20">
+              ▶️ {t.replay}
             </button>
           </div>
           
-          <button onClick={reset} className="w-full mt-4 text-[10px] font-black text-slate-400 hover:text-rose-500 transition-colors uppercase tracking-[0.2em] py-2">
-            {t.clear}
-          </button>
+          <button onClick={reset} className="w-full mt-4 text-[10px] font-black text-slate-400 hover:text-rose-500 transition-colors uppercase tracking-[0.2em]">{t.clear}</button>
         </div>
 
         <div className="bg-slate-900 p-8 rounded-[2.5rem] shadow-2xl space-y-4">
@@ -353,12 +360,10 @@ function CubeSimulation({ lang, t }) {
             {slots.map((s, i) => (
               <div key={i} onClick={() => loadSlot(s)} className={`flex items-center gap-4 p-4 rounded-2xl transition-all cursor-pointer ${s ? 'bg-slate-800 border border-slate-700 hover:border-slate-500 shadow-lg' : 'border border-slate-800 opacity-20'}`}>
                 <span className="text-slate-600 font-black text-xs">{i+1}</span>
-                <span className="flex-1 font-mono text-xs font-black tracking-widest text-amber-400 truncate">{s || "---"}</span>
-                {s && (
-                  <button onClick={e=>{e.stopPropagation(); const n=[...pinned]; n[i]=!n[i]; setPinned(n)}} className={pinned[i]?'opacity-100':'opacity-30 hover:opacity-100'}>
-                    📌
-                  </button>
-                )}
+                <span className="flex-1 font-mono text-xs font-black tracking-widest text-amber-400 truncate">
+                  {s ? s.map(c => t.chars[c]).join('') : "---"}
+                </span>
+                {s && <button onClick={e=>{e.stopPropagation(); const n=[...pinned]; n[i]=!n[i]; setPinned(n)}} className={pinned[i]?'opacity-100':'opacity-30 hover:opacity-100'}>📌</button>}
               </div>
             ))}
           </div>
