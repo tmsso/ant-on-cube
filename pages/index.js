@@ -79,7 +79,7 @@ function CubeSimulation({ lang, t }) {
   const [isModified, setIsModified] = useState(false);
   const [slots, setSlots] = useState(Array(5).fill(null));
   const [pinned, setPinned] = useState(Array(5).fill(false));
-  const [rot, setRot] = useState({ x: 25, y: -45, z: 0 });
+  const [rot, setRot] = useState({ x: 25, y: -30, z: 0 });
   const [isReplaying, setIsReplaying] = useState(false);
   const replayRef = useRef(null);
 
