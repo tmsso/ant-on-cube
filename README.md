@@ -16,7 +16,10 @@ An interactive web application that simulates an ant moving on a cube, designed 
 
 1. The ant starts at the upper corner nearest to the observer (corner 0)
 2. At each corner, the ant has three possible directions: Left, Right, or Back
-3. Directions are relative to the ant's arrival position
+3. Directions are always relative to the ant's heading (the edge it just
+   arrived along): Back returns along that edge, while Left and Right pick
+   between the two remaining edges as seen by an ant crawling on the outside
+   surface of the cube
 4. Movements are recorded in the path string below the visualization
 5. Use the Reset button to return the ant to the starting position
 6. Upon reset, the current path is saved to the first available non-pinned slot (LIFO)
@@ -68,6 +71,8 @@ npm start
 
 ✅ **Completed Features:**
 - Basic cube visualization with ant position tracking
+- Heading-relative movement logic (the ant's orientation is tracked, so
+  L/R/B always mean the same thing from the ant's point of view)
 - Movement controls (L, R, B buttons and keyboard)
 - Path recording display
 - Reset functionality
@@ -75,9 +80,7 @@ npm start
 - Responsive design with Tailwind CSS
 
 ⚠️ **Current Limitations:**
-- Build process may have compatibility issues with some environments
-- Cube visualization is a 2D projection (3D could be enhanced with Three.js)
-- Movement logic could be more sophisticated regarding orientation tracking
+- Cube visualization is a 2D oblique projection (3D could be enhanced with Three.js)
 
 ## Mathematical Context
 
