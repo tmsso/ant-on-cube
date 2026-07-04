@@ -80,7 +80,7 @@ npm start
 - Responsive design with Tailwind CSS
 
 ⚠️ **Current Limitations:**
-- Cube visualization is a 2D projection (3D could be enhanced with Three.js)
+- Cube visualization is a 2D oblique projection (3D could be enhanced with Three.js)
 
 ## Mathematical Context
 

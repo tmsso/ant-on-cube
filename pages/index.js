@@ -74,6 +74,17 @@ const getNextState = (state, direction) => {
   return null;
 };
 
+// Oblique projection so the cube reads as three-dimensional; the far face
+// (z = 1) is shifted up and to the right
+const project = ([x, y, z]) => ({
+  x: 40 + 130 * x + 55 * z,
+  y: 90 + 130 * y - 55 * z,
+});
+
+// Corner 7 (far bottom-left) sits inside the cube silhouette, so its three
+// edges are hidden and drawn dashed, like a classic schematic cube
+const HIDDEN_CORNER = 7;
+
 function CubeSimulation() {
   const [antState, setAntState] = useState(START_STATE);
   const [antPath, setAntPath] = useState('');
@@ -130,34 +141,54 @@ function CubeSimulation() {
       {/* Cube Visualization */}
       <div className="flex justify-center">
         <div className="relative w-64 h-64 bg-gray-100 rounded-lg">
-          {/* 2D projection of cube corners */}
-          {CORNERS.map((corner, index) => (
-            <div
-              key={index}
-              className={`absolute w-4 h-4 rounded-full transform -translate-x-2 -translate-y-2 ${
-                antState.position === index ? 'bg-red-500' : 'bg-blue-500'
-              }`}
-              style={{
-                left: `${corner[0] * 100}px`,
-                top: `${corner[1] * 100}px`,
-              }}
-            />
-          ))}
-
-          {/* Edges */}
+          {/* Wireframe edges */}
           <svg className="absolute top-0 left-0 w-full h-full pointer-events-none">
-            {EDGES.map(([start, end], i) => (
-              <line
-                key={i}
-                x1={CORNERS[start][0] * 100}
-                y1={CORNERS[start][1] * 100}
-                x2={CORNERS[end][0] * 100}
-                y2={CORNERS[end][1] * 100}
-                stroke="#666"
-                strokeWidth="1"
-              />
-            ))}
+            {EDGES.map(([start, end], i) => {
+              const a = project(CORNERS[start]);
+              const b = project(CORNERS[end]);
+              const isHeadingEdge =
+                (start === antState.cameFrom && end === antState.position) ||
+                (start === antState.position && end === antState.cameFrom);
+              const isHidden =
+                start === HIDDEN_CORNER || end === HIDDEN_CORNER;
+              return (
+                <line
+                  key={i}
+                  x1={a.x}
+                  y1={a.y}
+                  x2={b.x}
+                  y2={b.y}
+                  stroke={isHeadingEdge ? '#ef4444' : '#555'}
+                  strokeWidth={isHeadingEdge ? 2.5 : 1.5}
+                  strokeDasharray={isHidden && !isHeadingEdge ? '4 4' : undefined}
+                />
+              );
+            })}
           </svg>
+
+          {/* Corners */}
+          {CORNERS.map((corner, index) => {
+            const { x, y } = project(corner);
+            const isAnt = antState.position === index;
+            return (
+              <div key={index}>
+                <div
+                  className={`absolute rounded-full transform -translate-x-1/2 -translate-y-1/2 ${
+                    isAnt
+                      ? 'w-5 h-5 bg-red-500 ring-2 ring-red-300'
+                      : 'w-3.5 h-3.5 bg-blue-500'
+                  }`}
+                  style={{ left: `${x}px`, top: `${y}px` }}
+                />
+                <div
+                  className="absolute text-xs text-gray-500"
+                  style={{ left: `${x + 7}px`, top: `${y + 5}px` }}
+                >
+                  {index}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
