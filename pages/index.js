@@ -74,13 +74,6 @@ const getNextState = (state, direction) => {
   return null;
 };
 
-// Oblique projection so all 8 corners are visible; the far face (z = 1) is
-// shifted up and to the right
-const project = ([x, y, z]) => ({
-  x: 40 + 130 * x + 55 * z,
-  y: 90 + 130 * y - 55 * z,
-});
-
 function CubeSimulation() {
   const [antState, setAntState] = useState(START_STATE);
   const [antPath, setAntPath] = useState('');
@@ -137,48 +130,34 @@ function CubeSimulation() {
       {/* Cube Visualization */}
       <div className="flex justify-center">
         <div className="relative w-64 h-64 bg-gray-100 rounded-lg">
+          {/* 2D projection of cube corners */}
+          {CORNERS.map((corner, index) => (
+            <div
+              key={index}
+              className={`absolute w-4 h-4 rounded-full transform -translate-x-2 -translate-y-2 ${
+                antState.position === index ? 'bg-red-500' : 'bg-blue-500'
+              }`}
+              style={{
+                left: `${corner[0] * 100}px`,
+                top: `${corner[1] * 100}px`,
+              }}
+            />
+          ))}
+
           {/* Edges */}
           <svg className="absolute top-0 left-0 w-full h-full pointer-events-none">
-            {EDGES.map(([start, end], i) => {
-              const a = project(CORNERS[start]);
-              const b = project(CORNERS[end]);
-              const isHeadingEdge =
-                (start === antState.cameFrom && end === antState.position) ||
-                (start === antState.position && end === antState.cameFrom);
-              return (
-                <line
-                  key={i}
-                  x1={a.x}
-                  y1={a.y}
-                  x2={b.x}
-                  y2={b.y}
-                  stroke={isHeadingEdge ? '#ef4444' : '#666'}
-                  strokeWidth={isHeadingEdge ? 2.5 : 1}
-                />
-              );
-            })}
+            {EDGES.map(([start, end], i) => (
+              <line
+                key={i}
+                x1={CORNERS[start][0] * 100}
+                y1={CORNERS[start][1] * 100}
+                x2={CORNERS[end][0] * 100}
+                y2={CORNERS[end][1] * 100}
+                stroke="#666"
+                strokeWidth="1"
+              />
+            ))}
           </svg>
-
-          {/* Corners */}
-          {CORNERS.map((corner, index) => {
-            const { x, y } = project(corner);
-            return (
-              <div key={index}>
-                <div
-                  className={`absolute w-4 h-4 rounded-full transform -translate-x-2 -translate-y-2 ${
-                    antState.position === index ? 'bg-red-500' : 'bg-blue-500'
-                  }`}
-                  style={{ left: `${x}px`, top: `${y}px` }}
-                />
-                <div
-                  className="absolute text-xs text-gray-500 transform -translate-x-2"
-                  style={{ left: `${x + 8}px`, top: `${y + 4}px` }}
-                >
-                  {index}
-                </div>
-              </div>
-            );
-          })}
         </div>
       </div>
 
